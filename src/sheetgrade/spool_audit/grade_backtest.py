@@ -1,7 +1,7 @@
 from collections import defaultdict
 from math import fsum, isfinite, sqrt
 
-from .algorithm import brier_score, final_spools
+from .algorithm import _apply_delivery_basis, brier_score, final_spools
 from .contracts import parse
 
 
@@ -61,13 +61,19 @@ def report_by_grade(batches, threshold, bins):
     return output,completed,fsum(exposed)
 
 
-def audit_grade_backtest(rows, *, as_of, threshold=.65, bins=(0,.2,.4,.6,.8,1)):
+def audit_grade_backtest(rows, *, as_of, threshold=.65, bins=(0,.2,.4,.6,.8,1),
+                         settlement=None, delivery=None, handoff=None, **extra):
     fractions=tuple(bins)
     if len(fractions)<2 or fractions[0]!=0 or fractions[-1]!=1 or tuple(sorted(set(fractions)))!=fractions:
         raise ValueError('INVALID_RELIABILITY_BUCKETS')
     if not isfinite(threshold) or not 0<threshold<1:
         raise ValueError('INVALID_GRADE_THRESHOLD')
     settled,rejected=final_spools([parse(record) for record in rows],as_of)
+    basis_source = settlement if settlement is not None else delivery
+    if basis_source is None:
+        basis_source = handoff if handoff is not None else extra.get('delivery_basis')
+    if basis_source is not None:
+        settled = _apply_delivery_basis(settled, basis_source)
     grouping=defaultdict(list)
     for row in settled:
         grouping[row.grade].append(row)

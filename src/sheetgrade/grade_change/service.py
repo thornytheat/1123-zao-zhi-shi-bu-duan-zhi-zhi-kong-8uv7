@@ -44,3 +44,10 @@ def grade_at(windows, line, minute):
 
 
 from .grade_timeline import audit_grade_timeline
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

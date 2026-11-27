@@ -35,3 +35,10 @@ def evaluate(rows: Iterable[Mapping[str, Any]], **options) -> dict:
         'errors': [asdict(error) for error in rejected],
     }
 from .continuity_proof import summarize_reels
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

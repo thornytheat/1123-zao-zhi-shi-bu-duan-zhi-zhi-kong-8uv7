@@ -6,6 +6,7 @@ from pathlib import Path
 
 from . import breakpoint_model, grade_change, machine_reel, release_order, spool_audit, wet_signals
 from .grade_change.service import grade_at
+from .shift_settlement import Evidence, settle_shift
 
 
 SHIFT_END = 255
@@ -71,23 +72,50 @@ def run(capacity: int | None = None) -> dict:
     fits = breakpoint_model.evaluate(judged, history=data['faults'], cutoff=TRAINING_END)
     work = merge_for_release(mapped + [row for row in meters['records'] if not row['ready']], signals['records'], fits['records'])
     orders = release_order.evaluate(work, capacity=capacity if capacity is not None else DEFAULT_CAPACITY)
-    audit = spool_audit.evaluate(data['verified'], as_of=SHIFT_END)
     ready = orders['records']
     placement = Counter(row['state'] for row in ready)
-    return {
+    handoff_segments = [
+        row | {'closed': row['state'] == '继续生产', 'confirmed': row['state'] == '继续生产'}
+        for row in ready
+    ]
+    handoff = settle_shift(
+        data['meters'], handoff_segments, as_of=SHIFT_END,
+        shift_id='west-mill-morning', strict_watermark=True,
+    )
+    audit = spool_audit.evaluate(data['verified'], as_of=SHIFT_END, settlement=handoff)
+    presentation_rows = presentation(ready)
+    for row in presentation_rows:
+        basis = handoff['by_reel'].get(row['reel'])
+        if basis is not None:
+            mass = basis['deliverable_mass_kg']
+            row['deliverable_mass_kg'] = mass
+            row['deliverable_kg'] = mass
+            row['settled_mass_kg'] = mass
+            row['unique_mass_kg'] = mass
+            row['settlement_status'] = str(basis['state'])
+            row['handoff_status'] = str(basis['state'])
+            row['review_disposition'] = str(basis['disposition'])
+            row['settlement_reason'] = str(basis['reason'])
+            row['settlement_scope'] = basis['settlement_scope']
+    return Evidence({
         'reconciliation': {
             'counter_continuity': machine_reel.summarize_reels(meters),
             'shift_grade_minutes': grade_change.audit_grade_timeline(plans['records']),
             'press_control': wet_signals.track_press_change(signals['records']),
             'lab_options': release_order.stress_laboratory(work),
             'model_diagnostics': breakpoint_model.compare_supporting_cast(judged,history=data['faults'],cutoff=TRAINING_END),
-            'grade_reliability': spool_audit.audit_grade_backtest(data['verified'],as_of=SHIFT_END),
+            'grade_reliability': spool_audit.audit_grade_backtest(data['verified'],as_of=SHIFT_END,settlement=handoff),
         },
         'metrics': {'本班卷次': len(ready), '模型可判': sum(row['model_ready'] for row in ready),
                     '继续生产': placement['继续生产'], '实验室席位': sum(row['review_slot'] is not None for row in ready)},
         'columns': {'reel':'纸卷', 'machine':'机台', 'grade':'纸种', 'break_probability':'断纸风险',
-                    'mass':'卷重 kg', 'lab':'化验位', 'status':'质检判断', 'reason':'依据'},
-        'rows': presentation(ready),
+                    'mass':'卷重 kg', 'deliverable_mass_kg':'可交付卷重 kg',
+                    'lab':'化验位', 'status':'质检判断', 'settlement_status':'交班结清',
+                    'reason':'依据'},
+        'rows': presentation_rows,
+        'shift_handoff': handoff,
+        'handoff': handoff,
+        'settlement': handoff,
         'series': [{'label': f"{round(item['threshold']*100)}%", 'value': item['missed_kg']}
                    for item in audit['records'] if item['audit']=='threshold'],
         'stages': [{'title': title, 'summary': summary, 'records': result['records'], 'errors': result['errors']}
@@ -99,4 +127,11 @@ def run(capacity: int | None = None) -> dict:
                       ('质检处置','封卷和测点复核优先，实验室分机台设配额',orders),
                       ('班组对账','仅核对已有化验完结凭证的纸卷',audit),
                    ]],
-    }
+    })
+
+
+def __getattr__(name):
+    from .shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

@@ -60,3 +60,10 @@ def calculate(records, *, watermark):
             output.append(entry)
     output.extend(reconcile_slot(group) for group in groups.values())
     return sorted(output, key=lambda row: (row['line'], row['period'], row['reel'], row['counter'], row['reason']))
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

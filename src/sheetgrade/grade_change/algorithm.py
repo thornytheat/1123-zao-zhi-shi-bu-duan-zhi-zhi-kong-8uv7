@@ -57,3 +57,10 @@ def calculate(records, *, available_at):
     ledger = revision_windows(records, available_at)
     clashes = key_overlaps(ledger)
     return [row | {'conflicts': sorted(clashes[row['line'], row['order']])} for row in ledger]
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

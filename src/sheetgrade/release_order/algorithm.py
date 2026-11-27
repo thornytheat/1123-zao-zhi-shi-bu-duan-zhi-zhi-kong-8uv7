@@ -61,3 +61,10 @@ def calculate(records, *, capacity=5, threshold=.65, per_line=3):
             by_line[item['line']] += 1
             item['waiting_for_lab'] = False
     return cases
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

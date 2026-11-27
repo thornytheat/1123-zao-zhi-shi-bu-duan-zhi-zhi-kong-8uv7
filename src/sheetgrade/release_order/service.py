@@ -37,3 +37,10 @@ def evaluate(rows: Iterable[Mapping[str, Any]], **options) -> dict:
 
 
 from .lab_scenarios import stress_laboratory
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

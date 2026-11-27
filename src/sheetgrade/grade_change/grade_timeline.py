@@ -59,3 +59,10 @@ def audit_grade_timeline(plans, *, start=130, end=255, require_lines=()):
                        'conflict_share':phase.get('重叠计划',0)/(end-start),'evidence':spans,
                        'minutes_reconciled':sum(phase.values())==end-start})
     return output
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

@@ -61,3 +61,10 @@ def summarize_reels(telemetry, *, max_gap=15, expected_lines=()):
     actual=telemetry['accepted_count']+telemetry['rejected_count']
     return {'machines':summaries,'consumed_packets':scanned,'raw_documents':actual,
             'schema_failures':telemetry['rejected_count'],'input_balance':scanned+telemetry['rejected_count']==actual}
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)

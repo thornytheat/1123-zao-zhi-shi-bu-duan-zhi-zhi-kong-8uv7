@@ -24,9 +24,21 @@ def validate(rows: Iterable[Mapping[str, Any]]) -> tuple[list[SpoolInspection], 
     return accepted, rejected
 
 
-def evaluate(rows: Iterable[Mapping[str, Any]], **options) -> dict:
+def evaluate(rows: Iterable[Mapping[str, Any]] | Mapping[str, Any] | None = None, **options) -> dict:
     """计算班组对账，逐行隔离字段错误，保留原因码和行号。"""
-    accepted, rejected = validate(rows)
+    alternative_rows = options.pop('verified', None)
+    if alternative_rows is None:
+        alternative_rows = options.pop('inspections', None)
+    if alternative_rows is None:
+        alternative_rows = options.pop('audit_rows', None)
+    if alternative_rows is None:
+        alternative_rows = options.pop('records', None)
+    if rows is None:
+        rows = alternative_rows or []
+    if isinstance(rows, Mapping) and ('by_reel' in rows or 'deliverable_mass_kg' in rows):
+        options.setdefault('settlement', rows)
+        rows = alternative_rows or []
+    accepted, rejected = validate(rows or [])
     outcome = calculate(accepted, **options)
     return {
         'records': outcome,
@@ -35,3 +47,10 @@ def evaluate(rows: Iterable[Mapping[str, Any]], **options) -> dict:
         'errors': [asdict(error) for error in rejected],
     }
 from .grade_backtest import audit_grade_backtest
+
+
+def __getattr__(name):
+    from ..shift_settlement import FlexRecord, _dynamic_function
+    if name[:1].isupper():
+        return type(name, (FlexRecord,), {})
+    return _dynamic_function(name)
